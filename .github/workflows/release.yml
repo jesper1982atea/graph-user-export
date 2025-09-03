@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   build-and-release:
@@ -11,6 +14,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Determine tag name
+        id: set_tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -25,7 +37,7 @@ jobs:
         run: npm run package
 
       - name: Copy zip with tag name
-        run: cp graph-user-export-dist.zip "graph-user-export-dist-${GITHUB_REF_NAME}.zip"
+        run: cp graph-user-export-dist.zip "graph-user-export-dist-${{ steps.set_tag.outputs.tag_name }}.zip"
 
       - name: List files
         run: ls -la
@@ -35,20 +47,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Release ${{ github.ref_name }}
+          name: Release ${{ steps.set_tag.outputs.tag_name }}
           body: |
             Ladda ner den färdigbyggda appen här:
 
             - Senaste stabila länk (uppdateras automatiskt):
               https://github.com/${{ github.repository }}/releases/latest/download/graph-user-export-dist.zip
             - Denna release-fil (med versionsnummer):
-              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/graph-user-export-dist-${{ github.ref_name }}.zip
+              https://github.com/${{ github.repository }}/releases/download/${{ steps.set_tag.outputs.tag_name }}/graph-user-export-dist-${{ steps.set_tag.outputs.tag_name }}.zip
 
             Obs! "Source code (zip/tar.gz)" är auto-genererade och innehåller källkoden, inte den byggda appen.
           draft: false
           prerelease: false
           files: |
             graph-user-export-dist.zip
-            graph-user-export-dist-${{ github.ref_name }}.zip
+            graph-user-export-dist-${{ steps.set_tag.outputs.tag_name }}.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
