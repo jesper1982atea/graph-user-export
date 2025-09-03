@@ -45,28 +45,18 @@ export async function getLatestRelease() {
       })),
     };
   } catch (e) {
-    // Fallback: probe the stable 'latest download' URL without using API (avoids 403 rate limit)
-    try {
-      const res = await fetch(DIRECT_LATEST_URL, { method: 'HEAD', redirect: 'follow', cache: 'no-store' });
-      // If successful, res.url should be the redirected URL containing the tag
-      const finalUrl = res.url || DIRECT_LATEST_URL;
-      // Try to extract tag from /releases/download/<tag>/...
-      const m = finalUrl.match(/\/releases\/download\/([^/]+)\//);
-      const tag = m ? m[1] : '';
-      return {
-        tagName: tag || '',
-        htmlUrl: `https://github.com/${OWNER}/${REPO}/releases/latest`,
-        publishedAt: '',
-        assets: [
-          {
-            name: LATEST_ASSET_NAME,
-            browser_download_url: finalUrl,
-          },
-        ],
-      };
-    } catch (e2) {
-      throw e; // surface original API error if fallback also fails
-    }
+    // Fallback: return stable direct latest download URL without querying API (avoids CORS/rate limit)
+    return {
+      tagName: '', // unknown
+      htmlUrl: `https://github.com/${OWNER}/${REPO}/releases/latest`,
+      publishedAt: '',
+      assets: [
+        {
+          name: LATEST_ASSET_NAME,
+          browser_download_url: DIRECT_LATEST_URL,
+        },
+      ],
+    };
   }
 }
 
@@ -78,13 +68,15 @@ export async function checkForUpdate(currentVersion) {
   // Prefer the static-named dist zip, fallback to any zip containing 'graph-user-export-dist'
   const preferred = latest.assets.find(a => a.name === LATEST_ASSET_NAME);
   const fallback = latest.assets.find(a => a.name && a.name.endsWith('.zip') && a.name.includes('graph-user-export-dist'));
+  const asset = preferred || fallback;
   return {
-    hasUpdate: cmp === 1,
+    hasUpdate: latest.tagName ? (cmp === 1) : false, // unknown tag => don't spam banner
+    unknownVersion: !latest.tagName,
     current: cur,
     latest: lat,
     releaseHtmlUrl: latest.htmlUrl,
-    assetName: (preferred || fallback)?.name || '',
-    assetUrl: (preferred || fallback)?.browser_download_url || latest.htmlUrl,
+    assetName: asset?.name || '',
+    assetUrl: asset?.browser_download_url || latest.htmlUrl,
     publishedAt: latest.publishedAt,
   };
 }

@@ -22,7 +22,21 @@ export default function UpdateBanner() {
     return () => { mounted = false; };
   }, []);
 
-  if (!info || !info.hasUpdate) return null;
+  if (!info) return null;
+  // If version unknown (API blocked), show a subtle banner offering direct download without claiming an update
+  if (!info.hasUpdate && info.unknownVersion) {
+    return (
+      <div style={{ background:'#0b5', color:'#fff', borderRadius:8, padding:'10px 12px', display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontWeight:600 }}>Ny version kan finnas</span>
+        <span>Din version: {APP_VERSION}. GitHub API är begränsat, men du kan hämta senaste ZIP direkt.</span>
+        <div className="spacer" />
+        <a className="btn btn-light" href={info.assetUrl} target="_blank" rel="noopener noreferrer">Ladda ner ZIP</a>
+        <a className="btn btn-ghost" href={info.releaseHtmlUrl} target="_blank" rel="noopener noreferrer">Visa release</a>
+        <button className="btn btn-ghost" onClick={() => setDismissed('unknown')}>Dölj</button>
+      </div>
+    );
+  }
+  if (!info.hasUpdate) return null;
   if (dismissed && dismissed === info.latest) return null;
 
   const dismiss = () => {

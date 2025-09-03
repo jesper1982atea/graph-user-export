@@ -13,11 +13,12 @@ export default function InBrowserUpdater() {
     try {
       setBusy(true);
       setStatus('Söker efter ny version…');
-      const upd = await checkForUpdate(APP_VERSION);
+  const upd = await checkForUpdate(APP_VERSION);
       setInfo(upd);
-      if (!upd.hasUpdate) { setStatus('Du har redan senaste versionen.'); setBusy(false); return; }
-      setStatus('Hämtar ZIP…');
-      const res = await fetch(upd.assetUrl);
+  const url = upd.assetUrl;
+  if (!upd.hasUpdate && !upd.unknownVersion) { setStatus('Du har redan senaste versionen.'); setBusy(false); return; }
+  setStatus('Hämtar ZIP…');
+  const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Kunde inte ladda ner ZIP');
       const blob = await res.blob();
       setStatus('Packar upp…');
@@ -47,6 +48,7 @@ export default function InBrowserUpdater() {
       <div className="muted" style={{ marginTop:6 }}>Hämta senaste dist‑ZIP och extrahera i webbläsaren. Spara sedan filerna manuellt till din lokala mapp.</div>
       <div style={{ marginTop:10, display:'flex', gap:8, alignItems:'center' }}>
         <button className="btn btn-secondary" onClick={run} disabled={busy}>Sök och hämta</button>
+  <a className="btn btn-light" href={`https://github.com/jesper1982atea/graph-user-export/releases/latest/download/graph-user-export-dist.zip`} target="_blank" rel="noopener noreferrer">Direktlänk (ZIP)</a>
         {status && <span className="muted">{status}</span>}
       </div>
       {info?.hasUpdate && (
