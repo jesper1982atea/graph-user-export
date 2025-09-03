@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import { checkForUpdate } from './updateChecker';
 import { APP_VERSION } from './version';
@@ -8,6 +8,9 @@ export default function InBrowserUpdater() {
   const [status, setStatus] = useState('');
   const [files, setFiles] = useState([]);
   const [info, setInfo] = useState(null);
+  const [customUrl, setCustomUrl] = useState('');
+  const [dirHandle, setDirHandle] = useState(null);
+  const canUseFs = useMemo(() => typeof window !== 'undefined' && 'showDirectoryPicker' in window, []);
 
   const handleZipBuffer = useCallback(async (blobOrBuffer) => {
     setStatus('Packar upp…');
@@ -60,6 +63,58 @@ export default function InBrowserUpdater() {
     }
   };
 
+  const fetchFromCustomUrl = async () => {
+    if (!customUrl.trim()) { setStatus('Ange en giltig ZIP‑URL.'); return; }
+    setBusy(true);
+    try {
+      setStatus('Hämtar ZIP från URL…');
+      const res = await fetch(customUrl.trim(), { cache: 'no-store' });
+      if (!res.ok) throw new Error('Kunde inte ladda ner ZIP från angiven URL');
+      const blob = await res.blob();
+      await handleZipBuffer(blob);
+    } catch (err) {
+      setStatus('Hämtning misslyckades (ofta CORS). Ladda ner manuellt och använd Välj ZIP…');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickTargetFolder = async () => {
+    if (!canUseFs) { setStatus('Din webbläsare stödjer inte filsystemåtkomst.'); return; }
+    try {
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      setDirHandle(handle);
+      setStatus('Målmapp vald. Du kan nu spara alla filer.');
+    } catch {
+      // cancelled
+    }
+  };
+
+  const writeAllToFolder = async () => {
+    if (!dirHandle) { setStatus('Välj först målmapp.'); return; }
+    setBusy(true);
+    try {
+      for (const f of files) {
+        const parts = f.path.split('/');
+        let current = dirHandle;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const segment = parts[i];
+          current = await current.getDirectoryHandle(segment, { create: true });
+        }
+        const filename = parts[parts.length - 1];
+        const fileHandle = await current.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(f.blob);
+        await writable.close();
+      }
+      setStatus(`Sparat ${files.length} filer till vald mapp.`);
+    } catch (err) {
+      setStatus('Kunde inte spara alla filer. Kontrollera behörighet.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="card">
       <b>Uppdatera från GitHub</b>
@@ -89,8 +144,20 @@ export default function InBrowserUpdater() {
           </ul>
           {files.length > 200 && <div className="muted">…visar första 200</div>}
           <div className="muted" style={{ marginTop:8 }}>Tips: Spara filerna till din lokala `dist/` eller motsvarande mapp för att uppdatera.</div>
+          <div style={{ marginTop:10, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            {canUseFs && <button className="btn btn-light" onClick={pickTargetFolder} disabled={busy}>{dirHandle ? 'Byt målmapp' : 'Välj mål‑mapp…'}</button>}
+            {canUseFs && dirHandle && <button className="btn btn-secondary" onClick={writeAllToFolder} disabled={busy || files.length === 0}>Spara alla till mappen</button>}
+          </div>
         </div>
       )}
+      <div style={{ marginTop:12 }}>
+        <div style={{ fontWeight:600, marginBottom:6 }}>Hämta från valfri ZIP‑URL (ingen API‑användning)</div>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <input value={customUrl} onChange={e=>setCustomUrl(e.target.value)} placeholder="https://…/something.zip" style={{ minWidth:320 }} />
+          <button className="btn btn-light" onClick={fetchFromCustomUrl} disabled={busy}>Hämta från URL</button>
+        </div>
+        <div className="muted" style={{ marginTop:6 }}>Obs: Kan blockeras av CORS från källan. Vid fel: ladda ner manuellt och använd Välj ZIP…</div>
+      </div>
     </div>
   );
 }

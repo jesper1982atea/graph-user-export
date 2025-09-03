@@ -39,6 +39,28 @@ Resultat: Gå till GitHub Releases och ladda ner `graph-user-export-dist-<tag>.z
   - `npm install`
   - `npm run build`
 
+## Uppdatera till senaste version
+Välj det sätt som passar din miljö bäst.
+
+### A) Inne i appen (utan GitHub‑API)
+- Gå till fliken Inställningar → kortet "Uppdatera från GitHub".
+- Klicka Sök och hämta. Vid CORS‑fel: använd "Direktlänk (ZIP)" för att ladda ner zip manuellt och klicka sedan "Välj ZIP…" i appen.
+- När filerna visats i listan kan du:
+  - Spara enstaka filer (Spara‑knappar), eller
+  - I Chrome/Edge: klicka "Välj mål‑mapp…" och sedan "Spara alla till mappen" för att skriva allt direkt (File System Access API).
+
+Tips: Safari saknar File System Access API. Använd manuell nedladdning + "Välj ZIP…" och spara enskilda filer, eller uppdatera via CLI nedan.
+
+### B) Manuell nedladdning
+- Ladda ner senaste paketet: https://github.com/jesper1982atea/graph-user-export/releases/latest/download/graph-user-export-dist.zip
+- Packa upp och ersätt innehållet i din lokala mapp (t.ex. `dist/`).
+
+### C) CLI (för utvecklare med källkoden lokalt)
+- Kräver Node. Kör i projektroten:
+  - `npm run update:latest`
+    - Hämtar senaste dist‑zip och skriver till `dist/` (rensar först gamla filer).
+  - Testkör utan att skriva: `npm run update:dry`
+
 ## Behörigheter för Graph
 - För att se alla data:
   - Möten: Calendars.Read

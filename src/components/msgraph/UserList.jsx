@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { formatFieldLabel } from './fieldLabelMap';
 import AvatarWithPresence from './AvatarWithPresence';
 import { USER_FIELDS } from './userFields';
@@ -37,6 +39,102 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
   };
   const [presenceMap, setPresenceMap] = useState({}); // { idOrUpn: presenceString }
   const data = useMemo(() => (users || []).map(u => normalizeUser(u)), [users]);
+
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState('');
+
+  const toAsciiSlug = (s) => {
+    try {
+      return (s || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}+/gu, '')
+        .replace(/[^a-zA-Z0-9]+/g, '.')
+        .replace(/^\.+|\.+$/g, '')
+        .toLowerCase();
+    } catch {
+      return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
+    }
+  };
+
+  const buildFileBase = (u) => {
+    const gn = (u.givenName || '').trim();
+    const sn = (u.surname || '').trim();
+    if (gn && sn) return toAsciiSlug(`${gn}.${sn}`);
+    const dn = (u.displayName || '').trim();
+    if (dn) return toAsciiSlug(dn.replace(/\s+/g, '.'));
+    const upn = (u.userPrincipalName || u.mail || '').trim();
+    if (upn) return toAsciiSlug(upn.split('@')[0]);
+    return toAsciiSlug(u.id || 'user');
+  };
+
+  const downloadPhotosZip = async (list) => {
+    const source = Array.isArray(list) ? list : data;
+    if (!token) { alert('Ingen token. Verifiera token först.'); return; }
+    if (!source.length) { alert('Inga användare att hämta bilder för.'); return; }
+    setPhotoBusy(true);
+    setPhotoStatus('Förbereder…');
+    try {
+      const Authorization = (token || '').trim().toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+      const zip = new JSZip();
+      const usedNames = new Set();
+      let fetched = 0;
+      // Limit concurrency to avoid throttling
+      const concurrency = 4;
+      const queue = [...source];
+      const runWorker = async () => {
+        while (queue.length) {
+          const u = queue.shift();
+          const id = u.id || u.userPrincipalName || u.mail;
+          if (!id) { continue; }
+          try {
+            const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(id)}/photo/$value`, {
+              headers: { Authorization },
+            });
+            if (!res.ok) { continue; }
+            const blob = await res.blob();
+            const ct = res.headers.get('content-type') || 'image/jpeg';
+            const ext = ct.includes('png') ? 'png' : ct.includes('gif') ? 'gif' : 'jpg';
+            let base = buildFileBase(u);
+            let name = `${base}.${ext}`;
+            let i = 2;
+            while (usedNames.has(name)) { name = `${base}-${i++}.${ext}`; }
+            usedNames.add(name);
+            zip.file(name, blob);
+            fetched++;
+            if (fetched % 5 === 0) setPhotoStatus(`Hämtat ${fetched} bilder…`);
+          } catch {
+            // ignore this user
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: concurrency }, runWorker));
+      if (fetched === 0) {
+        setPhotoStatus('Inga bilder hittades.');
+        setPhotoBusy(false);
+        return;
+      }
+      setPhotoStatus('Skapar ZIP…');
+      const out = await zip.generateAsync({ type: 'blob' });
+      saveAs(out, 'anvandar-bilder.zip');
+      setPhotoStatus(`Klar. ${fetched} bilder sparade.`);
+    } catch (e) {
+      setPhotoStatus('Kunde inte skapa ZIP.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const selectedCount = useMemo(() => {
+    const m = selectedMap || {};
+    return Object.keys(m).filter(id => m[id]).length;
+  }, [selectedMap]);
+
+  const downloadSelectedPhotosZip = async () => {
+    const m = selectedMap || {};
+    const subset = data.filter(u => u.id && m[u.id]);
+    if (!subset.length) { alert('Inga valda användare.'); return; }
+    return downloadPhotosZip(subset);
+  };
 
   useEffect(() => {
     if (Array.isArray(selectedFields)) {
@@ -99,15 +197,77 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
     onChangeSelectedFields && onChangeSelectedFields(next);
   };
 
+  const moveField = (f, dir) => {
+    const idx = fields.indexOf(f);
+    if (idx < 0) return;
+    const j = dir === 'up' ? idx - 1 : idx + 1;
+    if (j < 0 || j >= fields.length) return;
+    const next = fields.slice();
+    const tmp = next[idx];
+    next[idx] = next[j];
+    next[j] = tmp;
+    setFields(next);
+    onChangeSelectedFields && onChangeSelectedFields(next);
+  };
+
+  const removeField = (f) => {
+    if (!fields.includes(f)) return;
+    const next = fields.filter(x => x !== f);
+    setFields(next);
+    onChangeSelectedFields && onChangeSelectedFields(next);
+  };
+
+  // Drag & drop reordering for selected fields
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+  const reorder = (arr, from, to) => {
+    if (from === to || from == null || to == null) return arr;
+    const next = arr.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  };
+
   const FieldControls = () => (
-    <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginBottom:8 }}>
-      <b>Visa fält:</b>
-      {allFieldOptions.map(f => (
-        <label key={f} className="muted" style={{ display:'inline-flex', alignItems:'center', gap:6, border:'1px solid var(--border)', padding:'2px 6px', borderRadius:6 }}>
-          <input type="checkbox" checked={fields.includes(f)} onChange={() => handleFieldToggle(f)} />
-          <span>{f}</span>
-        </label>
-      ))}
+    <div style={{ display:'grid', gap:10, marginBottom:8 }}>
+      <div>
+        <b>Valda fält (ordning):</b>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
+          {fields.length === 0 && <span className="muted">Inga valda fält.</span>}
+          {fields.map((f, i) => (
+            <div
+              key={f+':'+i}
+              draggable
+              onDragStart={(e) => { setDragIndex(i); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch {} }}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overIndex !== i) setOverIndex(i); }}
+              onDragEnter={(e) => { e.preventDefault(); if (overIndex !== i) setOverIndex(i); }}
+              onDrop={(e) => { e.preventDefault(); const to = i; const from = dragIndex != null ? dragIndex : (() => { try { return parseInt(e.dataTransfer.getData('text/plain')||'-1', 10); } catch { return -1; } })(); const next = reorder(fields, from, to); if (next !== fields) { setFields(next); onChangeSelectedFields && onChangeSelectedFields(next); } setDragIndex(null); setOverIndex(null); }}
+              onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+              aria-grabbed={dragIndex === i}
+              title="Dra för att flytta"
+              style={{ display:'inline-flex', alignItems:'center', gap:6, border:'1px solid var(--border)', padding:'4px 8px', borderRadius:8, background:'var(--card-bg)', outline: overIndex===i ? '2px dashed var(--border)' : 'none' }}
+            >
+              <span style={{ fontWeight:600 }}>{formatFieldLabel(f)}</span>
+              <div style={{ display:'inline-flex', gap:4 }}>
+                <button className="btn btn-ghost" title="Flytta upp" onClick={() => moveField(f, 'up')} disabled={i === 0}>↑</button>
+                <button className="btn btn-ghost" title="Flytta ner" onClick={() => moveField(f, 'down')} disabled={i === fields.length - 1}>↓</button>
+                <button className="btn btn-ghost" title="Ta bort" onClick={() => removeField(f)}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <b>Lägg till/ta bort fält:</b>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginTop:6 }}>
+          {allFieldOptions.map(f => (
+            <label key={f} className="muted" style={{ display:'inline-flex', alignItems:'center', gap:6, border:'1px solid var(--border)', padding:'2px 6px', borderRadius:6 }}>
+              <input type="checkbox" checked={fields.includes(f)} onChange={() => handleFieldToggle(f)} />
+              <span>{f}</span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 
@@ -116,8 +276,17 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
   if (mode === 'table') {
     return (
       <div>
-        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
-          <button className="btn btn-light" onClick={toggleControls}>{showControls ? 'Dölj fält' : 'Visa fält'}</button>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <div className="muted">{photoStatus}</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button className="btn btn-light" onClick={toggleControls}>{showControls ? 'Dölj fält' : 'Visa fält'}</button>
+            <button className="btn btn-secondary" onClick={() => downloadPhotosZip()} disabled={photoBusy}>Ladda ner bilder (ZIP)</button>
+            {selectable && (
+              <button className="btn btn-secondary" onClick={downloadSelectedPhotosZip} disabled={photoBusy || selectedCount === 0} title={selectedCount ? `Valda: ${selectedCount}` : 'Välj minst en användare'}>
+                Ladda ner valda (ZIP)
+              </button>
+            )}
+          </div>
         </div>
         {showControls && <FieldControls />}
         <div style={{ overflowX:'auto' }}>
@@ -184,8 +353,17 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
   // cards mode
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
-        <button className="btn btn-light" onClick={toggleControls}>{showControls ? 'Dölj fält' : 'Visa fält'}</button>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <div className="muted">{photoStatus}</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn btn-light" onClick={toggleControls}>{showControls ? 'Dölj fält' : 'Visa fält'}</button>
+          <button className="btn btn-secondary" onClick={() => downloadPhotosZip()} disabled={photoBusy}>Ladda ner bilder (ZIP)</button>
+          {selectable && (
+            <button className="btn btn-secondary" onClick={downloadSelectedPhotosZip} disabled={photoBusy || selectedCount === 0} title={selectedCount ? `Valda: ${selectedCount}` : 'Välj minst en användare'}>
+              Ladda ner valda (ZIP)
+            </button>
+          )}
+        </div>
       </div>
       {showControls && <FieldControls />}
       <div style={{ display:'flex', flexWrap:'wrap', gap:'1rem', marginTop:12 }}>

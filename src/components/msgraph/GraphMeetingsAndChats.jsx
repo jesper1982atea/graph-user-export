@@ -13,7 +13,7 @@ import UserDetailPage from './UserDetailPage';
 import { loadFieldLabelMap, saveFieldLabelMap } from './fieldLabelMap';
 import ChatAvatar from './ChatAvatar';
 import OneOnOnePairAvatars from './OneOnOnePairAvatars';
-import UpdateBanner from './UpdateBanner';
+import UpdateIndicator from './UpdateIndicator';
 import InBrowserUpdater from './InBrowserUpdater';
 import { getCachedChatMembers, fetchChatMembers } from './ChatMembersCache';
 import { USER_FIELDS } from './userFields';
@@ -219,9 +219,7 @@ const HomePage = (props) => {
 
   return (
     <div className="app-container">
-      <div style={{ marginBottom:10 }}>
-        <UpdateBanner />
-      </div>
+  {/* Compact update indicator replaces large banner */}
       <div className="app-hero">
         <div className="hero-content">
           <div style={{ display:'flex', alignItems:'center', gap:12, position:'relative' }}>
@@ -270,6 +268,8 @@ const HomePage = (props) => {
                 )}
               </div>
               )}
+              {/* Subtle update icon with popover */}
+              <UpdateIndicator openSettings={() => goto('/settings')} />
             </div>
           </div>
           <p>Verifiera din token, sök användare, filtrera datum och exportera listor till CSV. Allt körs lokalt i din webbläsare.</p>
@@ -791,6 +791,52 @@ const HomePage = (props) => {
         </div>
       )}
 
+      {isActive('dashboard') && (
+        <details className="card">
+          <summary style={{ cursor:'pointer', fontWeight:600 }}>Hämta token (Graph Explorer)</summary>
+          <div>
+            <ol style={{ marginTop: 8, color: 'var(--muted)' }}>
+              <li>Gå till <a href="https://developer.microsoft.com/graph/graph-explorer" target="_blank" rel="noopener noreferrer">Graph Explorer</a>.</li>
+              <li>Sign in och ge samtycke vid behov.</li>
+              <li>Öppna fliken <i>Access token</i> och kopiera token.</li>
+              <li>Klicka <i>Visa token</i> här i appen och klistra in (med eller utan "Bearer").</li>
+            </ol>
+            <div className="muted" style={{ marginTop: 8 }}>
+              Obs: För Chat/Möten krävs rätt scopes och ofta admin‑samtycke. Av säkerhetsskäl kan appen inte läsa token automatiskt via inbäddad sida (iframe) eller liknande.
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <a className="btn btn-secondary" href="https://developer.microsoft.com/graph/graph-explorer" target="_blank" rel="noopener noreferrer">Öppna Graph Explorer</a>
+              <button className="btn btn-light" onClick={onToggleTokenCard}>Visa tokenfält</button>
+            </div>
+          </div>
+        </details>
+      )}
+
+      {isActive('dashboard') && (
+        <details className="card">
+          <summary style={{ cursor:'pointer', fontWeight:600 }}>Uppdatera appen</summary>
+          <div>
+            <p className="muted" style={{ marginTop: 6 }}>Så uppdaterar du till senaste dist‑version:</p>
+            <ul style={{ marginTop: 8, color: 'var(--muted)' }}>
+              <li>
+                Öppna Inställningar → "Uppdatera från GitHub" och klicka <i>Sök och hämta</i>.
+                Vid CORS‑fel: använd <i>Direktlänk (ZIP)</i> och därefter <i>Välj ZIP…</i> i appen.
+              </li>
+              <li>
+                Direktnedladdning: <a href="https://github.com/jesper1982atea/graph-user-export/releases/latest/download/graph-user-export-dist.zip" target="_blank" rel="noopener noreferrer">senaste dist‑ZIP</a>.
+              </li>
+            </ul>
+            <div className="muted" style={{ marginTop: 8 }}>
+              Tips: I Chrome/Edge kan du välja en målmapp och spara alla filer direkt. Safari saknar detta stöd – spara enskilda filer eller uppdatera manuellt.
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-light" onClick={() => goto('/settings')}>Öppna Inställningar →</button>
+              <a className="btn btn-secondary" href="https://github.com/jesper1982atea/graph-user-export/releases/latest/download/graph-user-export-dist.zip" target="_blank" rel="noopener noreferrer">Direktlänk (ZIP)</a>
+            </div>
+          </div>
+        </details>
+      )}
+
       {isActive('settings') && (
         <div className="card">
           <b>Inställningar</b>
@@ -804,6 +850,24 @@ const HomePage = (props) => {
             <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
               <button className="btn btn-light" onClick={() => goto('/settings/labels')}>Hantera rubrikmappning →</button>
             </div>
+            <details>
+              <summary style={{ cursor:'pointer', fontWeight:600 }}>Hämta token (Graph Explorer)</summary>
+              <div>
+                <ol style={{ marginTop: 8, color: 'var(--muted)' }}>
+                  <li>Gå till <a href="https://developer.microsoft.com/graph/graph-explorer" target="_blank" rel="noopener noreferrer">Graph Explorer</a>.</li>
+                  <li>Sign in och ge samtycke vid behov.</li>
+                  <li>Öppna fliken <i>Access token</i> och kopiera token.</li>
+                  <li>Klicka <i>Visa tokenfält</i> här och klistra in (med eller utan "Bearer").</li>
+                </ol>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  Obs: För Chat/Möten krävs rätt scopes och ofta admin‑samtycke. Av säkerhetsskäl kan appen inte läsa token automatiskt via inbäddad sida (iframe).
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a className="btn btn-secondary" href="https://developer.microsoft.com/graph/graph-explorer" target="_blank" rel="noopener noreferrer">Öppna Graph Explorer</a>
+                  <button className="btn btn-light" onClick={onToggleTokenCard}>Visa tokenfält</button>
+                </div>
+              </div>
+            </details>
             <InBrowserUpdater />
           </div>
         </div>
