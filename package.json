@@ -2,10 +2,15 @@
   "name": "graph-user-export",
   "version": "1.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesper1982atea/graph-user-export.git"
+  },
   "scripts": {
     "start": "webpack serve --mode development --open",
   "build": "webpack --mode production",
-  "package": "npm run build && cd dist && zip -r ../graph-user-export-dist.zip ."
+  "package": "npm run build && cd dist && zip -r ../graph-user-export-dist.zip .",
+  "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags"
   },
   "dependencies": {
     "file-saver": "^2.0.5",
