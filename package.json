@@ -1,6 +1,6 @@
 {
   "name": "graph-user-export",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "webpack serve --mode development --open",
     "build": "webpack --mode production",
-  "package": "npm run build && rm -f graph-user-export-dist.zip && zip -r graph-user-export-dist.zip dist -x \"**/.DS_Store\"",
+    "package": "npm run build && rm -f graph-user-export-dist.zip && zip -r graph-user-export-dist.zip dist -x \"**/.DS_Store\"",
     "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags"
   },
   "dependencies": {
