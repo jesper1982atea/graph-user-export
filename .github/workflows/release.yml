@@ -1,5 +1,8 @@
 name: Release dist zip
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
@@ -44,9 +47,8 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           name: Release ${{ steps.set_tag.outputs.tag_name }}
           body: |
             Ladda ner den färdigbyggda appen här:
