@@ -10,6 +10,7 @@ import FieldLabelMappingPage from './FieldLabelMappingPage';
 import MeetingDetailPage from './MeetingDetailPage';
 import TeamDetailPage from './TeamDetailPage';
 import UserDetailPage from './UserDetailPage';
+import DepartmentsPage from './DepartmentsPage';
 import { loadFieldLabelMap, saveFieldLabelMap } from './fieldLabelMap';
 import ChatAvatar from './ChatAvatar';
 import OneOnOnePairAvatars from './OneOnOnePairAvatars';
@@ -321,6 +322,10 @@ const HomePage = (props) => {
             <span className="tab-icon" aria-hidden>🔎</span>
             <span className="tab-label">Sök</span>
           </button>
+          <button className={`btn tab-btn ${isActive('departments') ? 'active' : ''}`} onClick={() => goto('/departments')}>
+            <span className="tab-icon" aria-hidden>🏷️</span>
+            <span className="tab-label">Attribut</span>
+          </button>
           <button className={`btn tab-btn ${isActive('settings') ? 'active' : ''}`} onClick={() => goto('/settings')}>
             <span className="tab-icon" aria-hidden>⚙️</span>
             <span className="tab-label">Inställningar</span>
@@ -536,6 +541,14 @@ const HomePage = (props) => {
       {isActive('search') && tokenVerified && props.showUserDetail ? (
         <UserDetailPage token={props.token} />
       ) : null}
+
+          {isActive('departments') && tokenVerified ? (
+            <div className="card">
+              <DepartmentsPage token={props.token} />
+            </div>
+          ) : (
+            isActive('departments') ? <div className="card"><span className="muted">Verifiera token för att se attribut.</span></div> : null
+          )}
 
       {isActive('meetings') && tokenVerified ? (
         props.showMeetingDetail ? (
@@ -1224,9 +1237,15 @@ function MainGraphMeetingsAndChats(props) {
       }
     };
 
-    // Reagera på ?department= i URL och kör avdelningssökning
+    // Reagera på ?department= eller generiska ?field/value (& optional field2/value2) i URL och kör sökning
     useEffect(() => {
-      const qs = location.search || '';
+      // Support query params either before or after hash (#/search?...)
+      let qs = location.search || '';
+      if (!qs && typeof window !== 'undefined') {
+        const h = window.location.hash || '';
+        const qIndex = h.indexOf('?');
+        if (qIndex >= 0) qs = h.substring(qIndex);
+      }
       const params = new URLSearchParams(qs);
       const dept = params.get('department') || '';
       setSearchDepartment(dept);
@@ -1235,7 +1254,16 @@ function MainGraphMeetingsAndChats(props) {
         try { if (!currentPath.startsWith('/search')) navigate('/search'); } catch {}
         handleUserSearchByDepartment(dept);
       }
-    }, [location.search, tokenVerified, authToken]);
+      // Generic field search
+      const f1 = params.get('field') || '';
+      const v1 = params.get('value') || '';
+      const f2 = params.get('field2') || '';
+      const v2 = params.get('value2') || '';
+      if (f1 && v1 && tokenVerified && authToken) {
+        try { if (!currentPath.startsWith('/search')) navigate('/search'); } catch {}
+        handleUserSearchByFields({ field1: f1, value1: v1, field2: f2, value2: v2 });
+      }
+  }, [location.search, tokenVerified, authToken]);
 
     // Händelser för sök
     const handleSearchInputChange = (e) => setSearchInput(e.target.value);
@@ -1335,6 +1363,69 @@ function MainGraphMeetingsAndChats(props) {
         setSearchedUsers(all);
       } catch (e) {
         setSearchedUsers([{ error: e.message || 'Fel vid sökning (avdelning)' }]);
+      } finally {
+        setSearchLoading(false);
+      }
+    };
+
+    // Sök användare via godtyckliga fält-värden (från attributes explorer)
+  const handleUserSearchByFields = async ({ field1, value1, field2, value2 }) => {
+      if (!field1 || !value1) return;
+      setSearchLoading(true);
+      setSearchedUsers([]);
+      try {
+        const header = { Authorization: getAuthHeader() };
+        const selectCamel = GRAPH_USER_SELECT_FIELDS;
+        const escape = (s) => String(s).replace(/'/g, "''");
+    const mapField = (f, v) => {
+          if (!f) return '';
+          if (f.startsWith('extensionAttribute')) {
+            const idx = f.replace('extensionAttribute','');
+            return `onPremisesExtensionAttributes/extensionAttribute${idx}`;
+          }
+          if (f === 'upnDomain') {
+            // match domain against UPN or mail domains
+      const dom = escape(v);
+      return { custom: `endswith(userPrincipalName,'@${dom}') or endswith(mail,'@${dom}')` };
+          }
+          return f;
+        };
+    const val1 = escape(value1);
+    const part1 = mapField(field1, value1);
+        let filter = '';
+        if (typeof part1 === 'object' && part1.custom) filter = `(${part1.custom})`;
+        else filter = `${part1} eq '${val1}'`;
+        if (field2 && value2) {
+      const val2 = escape(value2);
+      const part2 = mapField(field2, value2);
+      if (typeof part2 === 'object' && part2.custom) filter = `${filter} and (${part2.custom})`;
+          else filter = `${filter} and ${part2} eq '${val2}'`;
+        }
+        let url = `https://graph.microsoft.com/v1.0/users?$top=50&$filter=${encodeURIComponent(filter)}&$select=${encodeURIComponent(selectCamel.join(','))}&$expand=${encodeURIComponent("manager($select=displayName,mail,userPrincipalName,jobTitle)")}`;
+        const all = [];
+        let guard = 0;
+        while (url && guard < 50) {
+          guard++;
+          const res = await fetch(url, { headers: header });
+          if (!res.ok) {
+            let msg = `HTTP ${res.status}`;
+            try { const j = await res.json(); msg += `: ${j?.error?.message || JSON.stringify(j)}`; } catch {}
+            throw new Error(`Sökning (fält) misslyckades ${msg}`);
+          }
+          const j = await res.json();
+          const list = Array.isArray(j.value) ? j.value : [];
+          list.forEach(u => all.push({
+            ...u,
+            managerDisplayName: u?.manager?.displayName || '',
+            managerMail: u?.manager?.mail || '',
+            managerUserPrincipalName: u?.manager?.userPrincipalName || '',
+            managerJobTitle: u?.manager?.jobTitle || '',
+          }));
+          url = j['@odata.nextLink'] || '';
+        }
+        setSearchedUsers(all);
+      } catch (e) {
+        setSearchedUsers([{ error: e.message || 'Fel vid sökning (fält)' }]);
       } finally {
         setSearchLoading(false);
       }
@@ -2311,6 +2402,25 @@ function MainGraphMeetingsAndChats(props) {
           />
         }
       />
+        <Route
+          path="/departments"
+          element={
+            <HomePage
+              token={authToken}
+              handleTokenChange={handleTokenChange}
+              verifyToken={verifyToken}
+              verifyLoading={verifyLoading}
+              tokenVerified={tokenVerified}
+              secondsLeft={secondsLeft}
+              ThemeToggle={ThemeToggle}
+              showTokenCard={showTokenCard}
+              onToggleTokenCard={() => setShowTokenCard(v => !v)}
+              navigate={navigate}
+              currentPage={'departments'}
+              // Render DepartmentsPage within content below
+            />
+          }
+        />
       {/* Lägg till motsvarande Route för ChatDetailPage om du har den */}
       <Route
         path="/"

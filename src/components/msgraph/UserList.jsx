@@ -27,8 +27,20 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
   const [showControls, setShowControls] = useState(() => {
     try { return (localStorage.getItem(`userlist_controls_open:${fieldsKey}`) === '1'); } catch { return false; }
   });
+  const [filterText, setFilterText] = useState(() => {
+    try { return localStorage.getItem(`userlist_filter:${fieldsKey}`) || ''; } catch { return ''; }
+  });
+  const [sortBy, setSortBy] = useState(() => {
+    try { return localStorage.getItem(`userlist_sort_by:${fieldsKey}`) || ''; } catch { return ''; }
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    try { return localStorage.getItem(`userlist_sort_dir:${fieldsKey}`) || 'asc'; } catch { return 'asc'; }
+  });
   useEffect(() => {
     try { setShowControls(localStorage.getItem(`userlist_controls_open:${fieldsKey}`) === '1'); } catch {}
+  try { setFilterText(localStorage.getItem(`userlist_filter:${fieldsKey}`) || ''); } catch {}
+  try { setSortBy(localStorage.getItem(`userlist_sort_by:${fieldsKey}`) || ''); } catch {}
+  try { setSortDir(localStorage.getItem(`userlist_sort_dir:${fieldsKey}`) || 'asc'); } catch {}
   }, [fieldsKey]);
   const toggleControls = () => {
     setShowControls(prev => {
@@ -38,6 +50,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
     });
   };
   const [presenceMap, setPresenceMap] = useState({}); // { idOrUpn: presenceString }
+  const [photoMap, setPhotoMap] = useState({}); // { idOrUpn: objectUrl|null }
   const data = useMemo(() => (users || []).map(u => normalizeUser(u)), [users]);
 
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -171,6 +184,41 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
     return () => { cancelled = true; };
   }, [token, data]);
 
+  // Fetch user photos with limited concurrency and cache in photoMap
+  useEffect(() => {
+    if (!token || !data.length) return;
+    const Authorization = (token || '').trim().toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+    const toKey = (u) => u.id || u.userPrincipalName || u.mail || '';
+    const pending = data
+      .map(u => ({ u, key: toKey(u) }))
+      .filter(x => x.key && photoMap[x.key] === undefined && !x.u.photoUrl);
+    if (!pending.length) return;
+    let cancelled = false;
+    const queue = pending.slice();
+    const concurrency = 4;
+    const worker = async () => {
+      while (!cancelled && queue.length) {
+        const item = queue.shift();
+        const { u, key } = item;
+        try {
+          const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(key)}/photo/$value`, { headers: { Authorization } });
+          if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            if (!cancelled) setPhotoMap(prev => (prev[key] ? prev : { ...prev, [key]: url }));
+          } else {
+            if (!cancelled) setPhotoMap(prev => (prev[key] ? prev : { ...prev, [key]: null }));
+          }
+        } catch {
+          if (!cancelled) setPhotoMap(prev => (prev[key] ? prev : { ...prev, [key]: null }));
+        }
+      }
+    };
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, worker);
+    Promise.all(workers);
+    return () => { cancelled = true; };
+  }, [token, data, photoMap]);
+
   const allFieldOptions = useMemo(() => {
     const base = ['displayName','mail','userPrincipalName','jobTitle','department','companyName','mobilePhone','officeLocation','country','city',
       // manager flat fields
@@ -271,13 +319,110 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
     </div>
   );
 
+  const setFilter = (val) => {
+    setFilterText(val);
+    try { localStorage.setItem(`userlist_filter:${fieldsKey}`, val); } catch {}
+  };
+
+  const toggleSort = (key) => {
+    const nextBy = key;
+    let nextDir = 'asc';
+    if (sortBy === key) nextDir = sortDir === 'asc' ? 'desc' : 'asc';
+    setSortBy(nextBy);
+    setSortDir(nextDir);
+    try {
+      localStorage.setItem(`userlist_sort_by:${fieldsKey}`, nextBy);
+      localStorage.setItem(`userlist_sort_dir:${fieldsKey}`, nextDir);
+    } catch {}
+  };
+
+  const getComparable = (v) => {
+    if (v == null) return '';
+    if (Array.isArray(v)) return v.join(' ');
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v); } catch { return ''; }
+    }
+    return String(v);
+  };
+
+  const getValue = (u, key) => {
+    if (key === 'user') {
+      return (u.displayName || '') + ' ' + (u.mail || u.userPrincipalName || '');
+    }
+    return getComparable(u[key]);
+  };
+
+  const matchesFilter = (u, q) => {
+    if (!q) return true;
+    const query = q.trim().toLowerCase();
+    // support simple key:value tokens; otherwise global contains
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const searchable = new Map();
+    // core fields
+    searchable.set('displayname', getComparable(u.displayName));
+    searchable.set('mail', getComparable(u.mail));
+    searchable.set('userprincipalname', getComparable(u.userPrincipalName));
+    searchable.set('jobtitle', getComparable(u.jobTitle));
+    searchable.set('department', getComparable(u.department));
+    // selected fields
+    fields.forEach(k => searchable.set(k.toLowerCase(), getComparable(u[k])));
+    // include all attributes on the user object as a fallback
+    try {
+      Object.keys(u || {}).forEach(k => {
+        if (!k) return;
+        if (!searchable.has(k.toLowerCase())) {
+          searchable.set(k.toLowerCase(), getComparable(u[k]));
+        }
+      });
+    } catch {}
+    const all = Array.from(searchable.values()).join(' ').toLowerCase();
+    // If any token has a colon, treat all tokens as key:value filters (AND)
+    const keyed = tokens.some(t => t.includes(':'));
+    if (!keyed) return all.includes(query);
+    return tokens.every(t => {
+      const [k, ...rest] = t.split(':');
+      const val = rest.join(':');
+      if (!k || !val) return true;
+      const keyLower = k.toLowerCase();
+      const src = searchable.get(keyLower) || '';
+      return String(src).toLowerCase().includes(val);
+    });
+  };
+
+  const filteredSorted = useMemo(() => {
+    const list = data.filter(u => matchesFilter(u, filterText));
+    if (!sortBy) return list;
+    const arr = list.slice();
+    const collator = typeof Intl !== 'undefined' && Intl.Collator ? new Intl.Collator('sv', { sensitivity: 'base', numeric: true }) : null;
+    arr.sort((a, b) => {
+      const va = getValue(a, sortBy);
+      const vb = getValue(b, sortBy);
+      let cmp = 0;
+      if (collator) cmp = collator.compare(va || '', vb || ''); else cmp = (va || '').localeCompare(vb || '');
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [data, filterText, sortBy, sortDir, fields]);
+
   if (!users.length) return <p className="list-empty">Inga användare.</p>;
 
   if (mode === 'table') {
     return (
       <div>
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <div className="muted">{photoStatus}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filtrera… t.ex. mail:@företag.se eller department:IT"
+              style={{ minWidth:260 }}
+            />
+            {filterText && (
+              <button className="btn btn-ghost" onClick={() => setFilter('')}>Rensa</button>
+            )}
+            <span className="muted">{photoStatus}</span>
+          </div>
           <div style={{ display:'flex', gap:8 }}>
             <button className="btn btn-light" onClick={toggleControls}>{showControls ? 'Dölj fält' : 'Visa fält'}</button>
             <button className="btn btn-secondary" onClick={() => downloadPhotosZip()} disabled={photoBusy}>Ladda ner bilder (ZIP)</button>
@@ -294,14 +439,27 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
             <thead>
               <tr>
                 {selectable && <th style={{ width:36 }} />}
-                <th style={{ minWidth:220 }}>Användare</th>
+                <th
+                  style={{ minWidth:220, cursor:'pointer', userSelect:'none' }}
+                  onClick={() => toggleSort('user')}
+                  title="Sortera på namn/e-post"
+                >
+                  Användare {sortBy === 'user' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                </th>
                 {fields.map(f => (
-                  <th key={f} style={{ textTransform:'none' }}>{formatFieldLabel(f)}</th>
+                  <th
+                    key={f}
+                    style={{ textTransform:'none', cursor:'pointer', userSelect:'none' }}
+                    onClick={() => toggleSort(f)}
+                    title={`Sortera på ${formatFieldLabel(f)}`}
+                  >
+                    {formatFieldLabel(f)} {sortBy === f ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {data.map((u, idx) => {
+              {filteredSorted.map((u, idx) => {
                 const key = u.id || u.userPrincipalName || u.mail || idx;
                 const presence = presenceMap[u.id] || presenceMap[u.userPrincipalName] || presenceMap[u.mail];
                 const handleClick = () => {
@@ -317,7 +475,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
                     )}
                     <td>
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <AvatarWithPresence photoUrl={u.photoUrl} name={u.displayName || u.mail || u.userPrincipalName} presence={presence} />
+                        <AvatarWithPresence photoUrl={u.photoUrl} name={u.displayName || u.mail || u.userPrincipalName} presence={presence} size={36} />
                         <div style={{ minWidth:0 }}>
                           <div style={{ fontWeight:600 }}>{u.displayName || '(okänd)'}</div>
                           <div className="muted" style={{ fontSize:'.9rem' }}>{u.mail || u.userPrincipalName || ''}</div>
@@ -367,7 +525,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
       </div>
       {showControls && <FieldControls />}
       <div style={{ display:'flex', flexWrap:'wrap', gap:'1rem', marginTop:12 }}>
-  {data.map((u, idx) => {
+        {filteredSorted.map((u, idx) => {
           const key = u.id || u.userPrincipalName || u.mail || idx;
           const presence = presenceMap[u.id] || presenceMap[u.userPrincipalName] || presenceMap[u.mail];
           const handleClick = () => {
@@ -385,7 +543,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
                 </div>
                 {selectable && (
                   <label style={{ marginLeft:'auto' }}>
-        <input type="checkbox" checked={!!selectedMap[u.id]} onChange={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(u); }} onClick={(e) => e.stopPropagation()} />
+                    <input type="checkbox" checked={!!selectedMap[u.id]} onChange={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(u); }} onClick={(e) => e.stopPropagation()} />
                   </label>
                 )}
               </div>
