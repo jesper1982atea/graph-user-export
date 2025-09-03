@@ -1,0 +1,128 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+  background: #f4f7fb;
+  color: #222;
+}
+
+.app-container {
+  max-width: 1100px;
+  margin: 2rem auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 4px 24px #0001;
+  padding: 2.5rem 2rem 2rem 2rem;
+}
+
+h1, h2, h3, h4 {
+  color: #005eb8;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.btn, button, input[type="button"], input[type="submit"] {
+  background: #005eb8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 0.2rem 0.2rem 0.2rem 0;
+  transition: background 0.2s;
+}
+.btn-secondary {
+  background: #e3f6e8;
+  color: #005eb8;
+  border: 1px solid #b3d8ff;
+}
+.btn:hover {
+  background: #003e7e;
+}
+.btn-secondary:hover {
+  background: #b3d8ff;
+}
+
+input, textarea {
+  border: 1px solid #b3d8ff;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 700px) {
+  .app-container {
+    padding: 1rem 0.5rem;
+  }
+  h1, h2, h3, h4 {
+    font-size: 1.2rem;
+  }
+}
+
+/* Tabellstil */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  margin-bottom: 1.5rem;
+}
+th, td {
+  padding: 0.7rem 0.5rem;
+  border: 1px solid #e3eaf3;
+  text-align: left;
+}
+th {
+  background: #f0f7ff;
+  color: #005eb8;
+}
+tr:nth-child(even) {
+  background: #f7fafd;
+}
+
+/* UserCard stil */
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  background: #e3f6e8;
+  padding: 1.2rem;
+  border-radius: 0.8rem;
+  margin: 1.2rem 0;
+  box-shadow: 0 2px 8px #0001;
+  min-width: 0;
+}
+.user-card img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff;
+  border: 2px solid #005eb8;
+}
+.user-card .user-info {
+  flex: 1;
+  min-width: 0;
+}
+.user-card .user-info .name {
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: #005eb8;
+  margin-bottom: 2px;
+}
+.user-card .user-info .mail {
+  color: #333;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+.user-card .user-info .job {
+  color: #666;
+  font-size: 0.95rem;
+}
+.user-card .user-info .dept {
+  color: #888;
+  font-size: 0.92rem;
+}
