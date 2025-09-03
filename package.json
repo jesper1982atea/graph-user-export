@@ -1,6 +1,6 @@
 {
   "name": "graph-user-export",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "repository": {
     "type": "git",
@@ -8,9 +8,9 @@
   },
   "scripts": {
     "start": "webpack serve --mode development --open",
-  "build": "webpack --mode production",
-  "package": "npm run build && cd dist && zip -r ../graph-user-export-dist.zip .",
-  "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags"
+    "build": "webpack --mode production",
+    "package": "npm run build && cd dist && zip -r ../graph-user-export-dist.zip .",
+    "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags"
   },
   "dependencies": {
     "file-saver": "^2.0.5",
