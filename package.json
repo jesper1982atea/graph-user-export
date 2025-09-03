@@ -1,6 +1,6 @@
 {
   "name": "graph-user-export",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "repository": {
     "type": "git",
@@ -10,13 +10,13 @@
     "start": "webpack serve --mode development --open",
     "build": "webpack --mode production",
     "package": "npm run build && rm -f graph-user-export-dist.zip && cd dist && zip -r ../graph-user-export-dist.zip . -x \"**/.DS_Store\"",
-  "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags",
-  "update:latest": "node scripts/update-from-release.js --dest dist --clean",
-  "update:dry": "node scripts/update-from-release.js --dest dist --clean --dry-run"
+    "release:tag": "npm version patch -m 'chore(release): %s' && git push --follow-tags",
+    "update:latest": "node scripts/update-from-release.js --dest dist --clean",
+    "update:dry": "node scripts/update-from-release.js --dest dist --clean --dry-run"
   },
   "dependencies": {
     "file-saver": "^2.0.5",
-  "jszip": "^3.10.1",
+    "jszip": "^3.10.1",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^7.8.1"
