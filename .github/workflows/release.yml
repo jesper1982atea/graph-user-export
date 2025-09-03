@@ -24,14 +24,27 @@ jobs:
       - name: Build and package
         run: npm run package
 
-      - name: Rename zip with tag name
-        run: mv graph-user-export-dist.zip "graph-user-export-dist-${GITHUB_REF_NAME}.zip"
+      - name: Copy zip with tag name
+        run: cp graph-user-export-dist.zip "graph-user-export-dist-${GITHUB_REF_NAME}.zip"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          name: Release ${{ github.ref_name }}
+          body: |
+            Ladda ner den färdigbyggda appen här:
+
+            - Senaste stabila länk (uppdateras automatiskt):
+              https://github.com/${{ github.repository }}/releases/latest/download/graph-user-export-dist.zip
+            - Denna release-fil (med versionsnummer):
+              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/graph-user-export-dist-${{ github.ref_name }}.zip
+
+            Obs! "Source code (zip/tar.gz)" är auto-genererade och innehåller källkoden, inte den byggda appen.
+          draft: false
+          prerelease: false
           files: |
+            graph-user-export-dist.zip
             graph-user-export-dist-${{ github.ref_name }}.zip
           generate_release_notes: true
