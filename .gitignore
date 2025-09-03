@@ -3,3 +3,4 @@ node_modules
 dist/
 graph-user-export-dist.zip
 
+.DS_Store
