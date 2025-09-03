@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatFieldLabel } from './fieldLabelMap';
 import AvatarWithPresence from './AvatarWithPresence';
 import { USER_FIELDS } from './userFields';
 import { normalizeUser } from './userNormalize';
@@ -126,7 +127,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
                 {selectable && <th style={{ width:36 }} />}
                 <th style={{ minWidth:220 }}>Användare</th>
                 {fields.map(f => (
-                  <th key={f} style={{ textTransform:'none' }}>{f}</th>
+                  <th key={f} style={{ textTransform:'none' }}>{formatFieldLabel(f)}</th>
                 ))}
               </tr>
             </thead>
@@ -214,7 +215,7 @@ export default function UserList({ users = [], token, mode = 'cards', selectedFi
                 <div style={{ marginTop:8 }}>
                   {fields.map(f => (
                     <div key={f} className="muted" style={{ fontSize:'.92rem' }}>
-                      <b style={{ textTransform:'none' }}>{f}:</b>{' '}
+                      <b style={{ textTransform:'none' }}>{formatFieldLabel(f)}:</b>{' '}
                       {f === 'department' && u.department ? (
                         <button
                           className="linklike"

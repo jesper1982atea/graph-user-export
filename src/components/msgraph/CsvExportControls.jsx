@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { USER_FIELDS } from './userFields';
+import { getFieldLabel } from './fieldLabelMap';
 import { normalizeUser } from './userNormalize';
 import { saveAs } from 'file-saver';
 
@@ -43,7 +44,7 @@ function CsvExportControls({ items = [], storageKey = 'default', defaultFileName
   const exportNow = () => {
     const keys = selected.length ? selected : candidates;
     if (!items || !Array.isArray(items) || items.length === 0 || keys.length === 0) return;
-    const header = keys.join(',');
+  const header = keys.map(k => getFieldLabel(k)).join(',');
     const rows = items.map(raw => {
       const it = normalizeUser(raw);
       return keys.map(k => {

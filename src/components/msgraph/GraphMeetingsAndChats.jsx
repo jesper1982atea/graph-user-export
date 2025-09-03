@@ -4,12 +4,17 @@ import UserList from './UserList';
 import ChatDetailPage from './ChatDetailPage';
 import '../../styles.css';
 import { saveAs } from 'file-saver';
+import CsvExportControls from './CsvExportControls';
 import { BrowserRouter as Router, Route, Routes, useNavigate, useParams, useLocation } from 'react-router-dom';
+import FieldLabelMappingPage from './FieldLabelMappingPage';
 import MeetingDetailPage from './MeetingDetailPage';
 import TeamDetailPage from './TeamDetailPage';
 import UserDetailPage from './UserDetailPage';
+import { loadFieldLabelMap, saveFieldLabelMap } from './fieldLabelMap';
 import ChatAvatar from './ChatAvatar';
 import OneOnOnePairAvatars from './OneOnOnePairAvatars';
+import UpdateBanner from './UpdateBanner';
+import InBrowserUpdater from './InBrowserUpdater';
 import { getCachedChatMembers, fetchChatMembers } from './ChatMembersCache';
 import { USER_FIELDS } from './userFields';
 import { GRAPH_USER_SELECT_FIELDS } from './graphUserSelect';
@@ -72,86 +77,45 @@ const LayersIcon = ({ size=16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
 );
 
-// Återanvändbar CSV-export med fältväljare som sparas i localStorage
-function CsvExportControls({ items = [], storageKey = 'default', defaultFileName = 'export.csv', buttonLabel = 'Exportera CSV', disabled = false, disabledTitle }) {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(() => {
-    try {
-      const raw = localStorage.getItem(`export_fields:${storageKey}`);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return arr;
-      }
-    } catch {}
-    return [];
-  });
-  // Kandidater: union av första N objektens toppnycklar
-  const candidates = React.useMemo(() => {
-    const set = new Set();
-    (items || []).slice(0, 25).forEach(it => {
-      if (it && typeof it === 'object') {
-        Object.keys(it).forEach(k => set.add(k));
-      }
-    });
-    return Array.from(set).sort();
-  }, [items]);
-
-  const toggleKey = (k) => setSelected(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]);
-  const selectAll = () => setSelected(candidates);
-  const clearAll = () => setSelected([]);
-  const saveSelection = () => {
-    try { localStorage.setItem(`export_fields:${storageKey}`, JSON.stringify(selected)); } catch {}
-    setOpen(false);
-  };
-  const exportNow = () => {
-    const keys = selected.length ? selected : candidates;
-    if (!items || !Array.isArray(items) || items.length === 0 || keys.length === 0) return;
-    const header = keys.join(',');
-    const rows = items.map(it => keys.map(k => {
-      let v = it?.[k];
-      if (typeof v === 'object' && v !== null) {
-        try { v = JSON.stringify(v); } catch { v = ''; }
-      }
-      v = v == null ? '' : String(v);
-      return '"' + v.replace(/"/g, '""') + '"';
-    }).join(','));
-    const csv = [header, ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    saveAs(blob, defaultFileName);
+function FieldLabelMappingSettings() {
+  const [map, setMap] = useState(() => loadFieldLabelMap());
+  const [newKey, setNewKey] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const keys = Object.keys(map || {}).sort();
+  const upsert = (k, v) => {
+    const next = { ...(map || {}) };
+    if (!k) return;
+    if (v == null || v === '') delete next[k]; else next[k] = v;
+    setMap(next);
+    saveFieldLabelMap(next);
   };
   return (
-    <div style={{ position:'relative', display:'inline-flex', gap:8, alignItems:'center' }}>
-      <button className="btn btn-secondary" onClick={exportNow} disabled={disabled} title={disabled ? disabledTitle : undefined}>{buttonLabel}</button>
-      <button className="btn btn-light" onClick={() => setOpen(o => !o)} title="Välj fält">⚙️</button>
-      {open && (
-        <div style={{ position:'absolute', right:0, top:'110%', zIndex:30, background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'0 8px 30px rgba(0,0,0,.12)', padding:12, minWidth:260 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-            <b>Välj fält</b>
-            <div style={{ display:'flex', gap:6 }}>
-              <button className="btn btn-light" onClick={selectAll}>Alla</button>
-              <button className="btn btn-light" onClick={clearAll}>Rensa</button>
+    <div style={{ marginTop:8 }}>
+      <div style={{ fontWeight:600 }}>Rubrikmappning (visa egna etiketter för fält)</div>
+      <div className="muted" style={{ marginTop:4 }}>Exempel: extensionAttribute1 → Kostnadsställe. Gäller i tabeller/kort och CSV-headers.</div>
+      <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:8, flexWrap:'wrap' }}>
+        <input value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder="fält-namn (t.ex. extensionAttribute1)" style={{ minWidth:260 }} />
+        <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="visningsnamn (t.ex. Kostnadsställe)" style={{ minWidth:240 }} />
+        <button className="btn btn-light" onClick={() => { if (newKey) { upsert(newKey, newLabel || newKey); setNewKey(''); setNewLabel(''); } }}>Lägg till/uppdatera</button>
+        <button className="btn btn-light" onClick={() => { setMap({}); saveFieldLabelMap({}); }}>Rensa alla</button>
+      </div>
+      {keys.length > 0 && (
+        <div style={{ marginTop:8, display:'grid', gap:6 }}>
+          {keys.map(k => (
+            <div key={k} style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <code style={{ background:'var(--bg)', padding:'2px 6px', borderRadius:6 }}>{k}</code>
+              <span>→</span>
+              <input value={map[k]} onChange={e => upsert(k, e.target.value)} style={{ minWidth:220 }} />
+              <button className="btn btn-light" onClick={() => upsert(k, '')}>Ta bort</button>
             </div>
-          </div>
-          <div style={{ maxHeight:220, overflow:'auto', paddingRight:6 }}>
-            {candidates.length === 0 ? (
-              <div className="muted">Inga fält tillgängliga.</div>
-            ) : candidates.map(k => (
-              <label key={k} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                <input type="checkbox" checked={selected.includes(k)} onChange={() => toggleKey(k)} />
-                <span>{k}</span>
-              </label>
-            ))}
-          </div>
-          <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'flex-end' }}>
-            <button className="btn btn-light" onClick={() => setOpen(false)}>Stäng</button>
-            <button className="btn btn-primary" onClick={saveSelection}>Spara</button>
-          </div>
-          <small className="muted" style={{ display:'block', marginTop:6 }}>Dina val sparas i webbläsaren.</small>
+          ))}
         </div>
       )}
     </div>
   );
 }
+
+// (Removed legacy inline CsvExportControls; using shared component from './CsvExportControls')
 
 const HomePage = (props) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -255,6 +219,9 @@ const HomePage = (props) => {
 
   return (
     <div className="app-container">
+      <div style={{ marginBottom:10 }}>
+        <UpdateBanner />
+      </div>
       <div className="app-hero">
         <div className="hero-content">
           <div style={{ display:'flex', alignItems:'center', gap:12, position:'relative' }}>
@@ -834,6 +801,10 @@ const HomePage = (props) => {
             </label>
             <div className="muted">Scopes i nuvarande token (scp): {tokenScopes || 'okänt'}</div>
             <div className="muted">Dina inställningar sparas lokalt i webbläsaren.</div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <button className="btn btn-light" onClick={() => goto('/settings/labels')}>Hantera rubrikmappning →</button>
+            </div>
+            <InBrowserUpdater />
           </div>
         </div>
       )}
@@ -1841,6 +1812,15 @@ function MainGraphMeetingsAndChats(props) {
             currentPage={currentPage}
             chatCreateEnabled={chatCreateEnabled}
             onToggleChatCreateEnabled={toggleChatCreateEnabled}
+          />
+        }
+      />
+      <Route
+        path="/settings/labels"
+        element={
+          <FieldLabelMappingPage
+            items={searchedUsers && searchedUsers.length ? searchedUsers : (me ? [me] : [])}
+            onBack={() => navigate && navigate('/settings')}
           />
         }
       />
